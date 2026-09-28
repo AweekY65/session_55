@@ -1,0 +1,2 @@
+[console_scripts]
+dqtool = dqtool.cli:main

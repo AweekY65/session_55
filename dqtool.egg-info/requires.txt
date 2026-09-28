@@ -1,0 +1,7 @@
+
+[parquet]
+pyarrow>=14
+
+[test]
+pytest>=7
+pyarrow>=14

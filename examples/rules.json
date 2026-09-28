@@ -1,0 +1,10 @@
+{
+  "rules": [
+    {"id": "R001", "type": "not-null", "column": "age"},
+    {"id": "R002", "type": "unique", "column": "id"},
+    {"id": "R003", "type": "range", "column": "age", "min": 0, "max": 120},
+    {"id": "R004", "type": "regex", "column": "email", "pattern": "^[^@]+@[^@]+\\.[^@]+$"},
+    {"id": "R005", "type": "allowed-values", "column": "status", "values": ["active", "inactive"]},
+    {"id": "R006", "type": "unique-composite", "columns": ["name", "status"]}
+  ]
+}

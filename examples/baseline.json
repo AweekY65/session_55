@@ -1,0 +1,147 @@
+{
+  "tool": "dqtool",
+  "version": "0.1.0",
+  "command": "profile",
+  "status": "ok",
+  "data_source": "examples/users.jsonl",
+  "format": "jsonl",
+  "elapsed_seconds": 0.0002,
+  "profile": {
+    "profile_version": 1,
+    "row_count": 3,
+    "column_count": 5,
+    "columns": {
+      "id": {
+        "total": 3,
+        "null_count": 0,
+        "null_rate": 0.0,
+        "non_null_count": 3,
+        "unique_count": 3,
+        "inferred_type": "int",
+        "type_counts": {
+          "int": 3
+        },
+        "common_values": [
+          {
+            "value": 1,
+            "count": 1
+          },
+          {
+            "value": 2,
+            "count": 1
+          },
+          {
+            "value": 3,
+            "count": 1
+          }
+        ],
+        "min": 1,
+        "max": 3,
+        "mean": 2.0
+      },
+      "name": {
+        "total": 3,
+        "null_count": 0,
+        "null_rate": 0.0,
+        "non_null_count": 3,
+        "unique_count": 3,
+        "inferred_type": "string",
+        "type_counts": {
+          "string": 3
+        },
+        "common_values": [
+          {
+            "value": "Alice",
+            "count": 1
+          },
+          {
+            "value": "Bob",
+            "count": 1
+          },
+          {
+            "value": "Carol",
+            "count": 1
+          }
+        ]
+      },
+      "age": {
+        "total": 3,
+        "null_count": 0,
+        "null_rate": 0.0,
+        "non_null_count": 3,
+        "unique_count": 3,
+        "inferred_type": "int",
+        "type_counts": {
+          "int": 3
+        },
+        "common_values": [
+          {
+            "value": 28,
+            "count": 1
+          },
+          {
+            "value": 30,
+            "count": 1
+          },
+          {
+            "value": 41,
+            "count": 1
+          }
+        ],
+        "min": 28,
+        "max": 41,
+        "mean": 33.0
+      },
+      "email": {
+        "total": 3,
+        "null_count": 0,
+        "null_rate": 0.0,
+        "non_null_count": 3,
+        "unique_count": 3,
+        "inferred_type": "string",
+        "type_counts": {
+          "string": 3
+        },
+        "common_values": [
+          {
+            "value": "alice@example.com",
+            "count": 1
+          },
+          {
+            "value": "bob@example.com",
+            "count": 1
+          },
+          {
+            "value": "carol@example.com",
+            "count": 1
+          }
+        ]
+      },
+      "tier": {
+        "total": 3,
+        "null_count": 0,
+        "null_rate": 0.0,
+        "non_null_count": 3,
+        "unique_count": 3,
+        "inferred_type": "string",
+        "type_counts": {
+          "string": 3
+        },
+        "common_values": [
+          {
+            "value": "bronze",
+            "count": 1
+          },
+          {
+            "value": "gold",
+            "count": 1
+          },
+          {
+            "value": "silver",
+            "count": 1
+          }
+        ]
+      }
+    }
+  }
+}

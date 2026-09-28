@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dqtool"
+version = "0.1.0"
+description = "本地数据质量分析与验证工具（CSV/JSONL/Parquet，纯本地，支持流式 profile、规则校验与基线对比）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+test = ["pytest>=7", "pyarrow>=14"]
+
+[project.scripts]
+dqtool = "dqtool.cli:main"
+
+[tool.setuptools]
+packages = ["dqtool"]

@@ -1,0 +1,376 @@
+Metadata-Version: 2.4
+Name: dqtool
+Version: 0.1.0
+Summary: 本地数据质量分析与验证工具（CSV/JSONL/Parquet，纯本地，支持流式 profile、规则校验与基线对比）
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Provides-Extra: parquet
+Requires-Dist: pyarrow>=14; extra == "parquet"
+Provides-Extra: test
+Requires-Dist: pytest>=7; extra == "test"
+Requires-Dist: pyarrow>=14; extra == "test"
+
+# dqtool — 本地数据质量分析与验证工具
+
+`dqtool` 是一个**纯本地、零外部服务**的数据质量工具：所有数据集、规则、profile、
+基线和报告都只使用本地 CSV / JSONL / Parquet 文件或进程内存，不依赖任何数据仓库、
+Great Expectations 服务、数据库或云平台。
+
+功能：
+
+- **字段 profile（统计画像）**：推断类型、空值率、唯一值数量、数值范围（min/max/mean）、
+  类型分布与高频常见值；
+- **六类质量规则**：`not-null`、`unique`、`range`、`regex`、`allowed-values`、
+  复合唯一键 `unique-composite`；
+- **逐行失败记录**：每条失败都带规则 ID、字段、1 起始的数据行位置和简洁原因；
+- **基线 profile 比较**：检测列缺失、新增列、类型变化、空值率明显变化、数值范围异常；
+- **分块流式处理**：大文件按块读取，不强制一次性载入内存；
+- **JSON 报告 + 明确退出码**：适合终端查看，也适合接入 CI。
+
+---
+
+## 目录
+
+- [安装](#安装)
+- [快速开始](#快速开始)
+- [命令行使用](#命令行使用)
+- [规则文件格式](#规则文件格式)
+- [Profile 统计口径](#profile-统计口径)
+- [基线比较](#基线比较)
+- [JSON 报告与退出码](#json-报告与退出码)
+- [Python 库 API（内存使用）](#python-库-api内存使用)
+- [运行测试](#运行测试)
+- [设计说明（大文件与内存）](#设计说明大文件与内存)
+
+---
+
+## 安装
+
+需要 Python 3.10+。CSV / JSONL 支持只依赖标准库；读 Parquet 需要 `pyarrow`。
+
+```bash
+# 方式一：直接在仓库根目录运行（无需安装）
+python3 -m dqtool --help
+
+# 方式二：可编辑安装，得到 dqtool 命令（含 parquet 依赖）
+pip install -e '.[parquet]'
+dqtool --help
+```
+
+环境中已安装 pyarrow 时可直接使用，无需任何安装步骤。
+
+---
+
+## 快速开始
+
+仓库 `examples/` 下自带样例数据与规则：
+
+```bash
+# 1. 生成字段 profile（JSON 打印到标准输出）
+python3 -m dqtool profile examples/sample.csv
+
+# 2. 按规则校验数据；有失败时退出码为 1
+python3 -m dqtool validate examples/sample.csv examples/rules.json
+
+# 3. 保存基线 profile，再与后续数据比较
+python3 -m dqtool profile examples/users.jsonl -o baseline.json
+python3 -m dqtool baseline baseline.json examples/users.parquet
+```
+
+---
+
+## 命令行使用
+
+三个子命令：`profile`、`validate`、`baseline`。通用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--format {csv,jsonl,parquet}` | 强制指定格式；默认按扩展名（`.csv`/`.jsonl`/`.ndjson`/`.parquet`）推断 |
+| `--chunk-size N` | 分块大小（行数），默认 10000；任何文件都按块流式读取 |
+| `--null-values "NA,NULL,\\N"` | 自定义空值词表，逗号分隔、大小写不敏感；空项代表空字符串。默认 `'',NA,N/A,NULL` |
+| `--lenient-csv` | CSV 行列数不一致时按截断/补空处理；**默认严格模式，行列数不一致直接报错（退出码 2）** |
+| `-o, --output PATH` | JSON 报告写入文件；不指定则打印到标准输出 |
+
+### profile
+
+```bash
+python3 -m dqtool profile DATA [--top-k 10]
+```
+
+`--top-k` 控制每列 `common_values` 保留的高频值个数。
+
+### validate
+
+```bash
+python3 -m dqtool validate DATA RULES [--max-failures N] [--show-failures 20]
+```
+
+- `--max-failures N`：JSON 报告中最多保留 N 条失败**明细**（失败总计数不受影响，
+  报告会标注 `"truncated": true`）；默认不限制；
+- `--show-failures N`：终端 stderr 摘要中展示多少条失败（不影响 JSON 报告）。
+
+### baseline
+
+两种用法：
+
+```bash
+# A. 现场对数据生成 profile，再与基线比较
+python3 -m dqtool baseline BASELINE.json DATA [阈值参数]
+
+# B. 两份已保存的 profile 直接比较（无需数据文件）
+python3 -m dqtool baseline BASELINE.json --current-profile CURRENT.json
+```
+
+阈值参数（均为可选）：
+
+| 参数 | 默认 | 含义 |
+| --- | --- | --- |
+| `--null-rate-abs` | `0.10` | 空值率绝对差阈值（10 个百分点） |
+| `--null-rate-rel` | `0.50` | 空值率相对差阈值（±50%） |
+| `--range-rel` | `0.20` | 数值 min/max 相对基线跨度的越界比例（20%） |
+| `--range-abs` | `0` | 基线跨度为 0（常量列）时使用的绝对容差 |
+
+---
+
+## 规则文件格式
+
+规则文件是 JSON：顶层为规则列表，或 `{"rules": [...]}` 对象。每条规则必有
+`id`（字符串，文件内唯一）和 `type`。
+
+```json
+{
+  "rules": [
+    {"id": "R001", "type": "not-null",       "column": "age"},
+    {"id": "R002", "type": "unique",         "column": "id"},
+    {"id": "R003", "type": "range",          "column": "age", "min": 0, "max": 120},
+    {"id": "R004", "type": "regex",          "column": "email", "pattern": "^[^@]+@[^@]+\\.[^@]+$"},
+    {"id": "R005", "type": "allowed-values", "column": "status", "values": ["active", "inactive"]},
+    {"id": "R006", "type": "unique-composite", "columns": ["region", "tenant_id"]}
+  ]
+}
+```
+
+| 类型 | 必填字段 | 语义 |
+| --- | --- | --- |
+| `not-null` | `column` | 值不得为空 |
+| `unique` | `column` | 非空值不得重复；**每个重复行都失败**，原因中给出首次出现的行号 |
+| `range` | `column`，`min` / `max` 至少一个 | 数值闭区间校验；非数值（如 `"abc"`、布尔值）记为“类型错误” |
+| `regex` | `column`, `pattern` | Python 正则 `search` 匹配；非字符串标量先转字符串 |
+| `allowed-values` | `column`, `values` | 值必须在允许列表中（数值按值比较，`1` 与 `1.0` 等价） |
+| `unique-composite` | `columns`（≥2 列也可，元素不重复） | 多列组合键唯一；**所有列全为空的行豁免** |
+
+通用语义：
+
+- **空值豁免**：除 `not-null` 外，规则遇到空值（归一化后的 null）一律放行，
+  空值问题只由 `not-null` 表达，避免一条空值被重复计失败；
+- **布尔不算数值**：`true/false` 不会被当作 `1/0` 参与 `range`；
+- 规则引用了数据中不存在的列，直接报配置错误（退出码 2）；
+- `id` 重复、缺少字段、正则无法编译、`min > max` 等规则配置问题一律在执行前报错。
+
+### 失败记录长什么样
+
+```json
+{
+  "rule_id": "R003",
+  "rule_type": "range",
+  "column": "age",
+  "row_number": 3,
+  "value": 201,
+  "reason": "值 201 超过上限 120"
+}
+```
+
+复合键失败时为 `"columns": ["region", "tenant_id"]`。`row_number` 从 1 开始、
+按数据行计数（CSV 表头不计、JSONL 空行不计）。
+
+---
+
+## Profile 统计口径
+
+每列输出：
+
+| 字段 | 口径 |
+| --- | --- |
+| `total` | 该列出现的数据行数 |
+| `null_count` / `non_null_count` | 空值数 / 非空值数 |
+| `null_rate` | `null_count / total`，保留 6 位小数；空表为 0 |
+| `unique_count` | **非空**去重值个数；`1` 与 `1.0` 视为同值，`True` 与 `1` 按 Python 语义同键 |
+| `inferred_type` | 见下表 |
+| `type_counts` | 各类值的计数：`int`/`float`/`bool`/`string`/`object` |
+| `min`/`max`/`mean` | **仅数值列**（int/float）输出；布尔不参与；`mean` 只统计非空数值 |
+| `common_values` | 非空高频值 Top-K，每项 `{"value", "count"}`；同频次按值确定性排序 |
+
+推断类型：
+
+| inferred_type | 条件 |
+| --- | --- |
+| `int` | 非空值全部为整数 |
+| `float` | 非空值由 int/float 混合且至少一个 float |
+| `bool` | 非空值全部为布尔 |
+| `string` | 非空值全部为字符串 |
+| `object` | 非空值全部是复杂类型（dict/list/date 等） |
+| `mixed` | 出现了上述多个类别（如同一列既有数字又有 `"abc"`） |
+| `null` | 整列没有任何非空值 |
+
+### 值归一化
+
+CSV 的所有字段天然是字符串，工具会在统计/校验前统一归一化（JSONL/Parquet 的
+原生标量也走同一套规则）：
+
+- 去除两端空白后，命中空值词表（默认 `''`、`NA`、`N/A`、`NULL`，大小写不敏感）→ `null`；
+- `true/false/True/TRUE/...` → 布尔；
+- 纯整数文本 → int；含小数点或指数且可解析 → float；
+- 其余保持字符串；`NaN`、`Infinity` 统一记为空值（保证输出严格合法 JSON）；
+- JSONL 自带的 int/float/bool/null 与 Parquet 的带类型列保持原生类型。
+
+这意味着 CSV 中的 `"30"` 会按整数参与 `range` 和数值统计；像 `"007"` 这样的
+前导零串也会被解析为整数 7，若需保留文本形态可在数据中避免纯数字写法。
+
+---
+
+## 基线比较
+
+先用 `profile -o baseline.json` 保存一份基线，之后对新数据运行
+`baseline baseline.json 新数据`。检测五类变化：
+
+1. `column_missing`：基线存在、当前缺失的列；
+2. `column_added`：当前新出现的列；
+3. `type_change`：推断类型变化（基线全为 null 的列只报空值率，不报类型漂移）；
+4. `null_rate_shift`：空值率变化，**绝对差 ≥ `null_rate-abs` 或相对差 ≥
+   `null_rate-rel`**（两者满足其一即报；基线空值率为 0 时只看绝对差）；
+5. `range_anomaly`：数值列当前 min 低于 `基线min - 容差`，或 max 高于
+   `基线max + 容差`，容差为 `max(range_abs, 基线跨度 × range_rel)`，min/max 分别报告。
+
+也可以直接比较两份 profile JSON（`--current-profile`），便于只交换统计结果而
+不交换原始数据。
+
+---
+
+## JSON 报告与退出码
+
+### 退出码
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 校验通过 / 基线无差异 / profile 成功 |
+| `1` | 数据质量问题：存在规则失败，或基线比较检测到漂移 |
+| `2` | 用法或输入错误：文件不存在、规则配置错误、引用缺失列、CSV 行列数不一致、JSONL 坏行、Parquet 文件损坏等 |
+
+CI 中可直接：
+
+```bash
+python3 -m dqtool validate data.csv rules.json -o quality-report.json
+# exit 1 会让 CI 步骤失败；exit 2 表示工具/输入本身有问题，应单独处理
+```
+
+### 报告结构
+
+- `profile`：`{tool, command, status, data_source, format, profile: {row_count, column_count, columns}}`
+- `validate`：在公共头之外包含
+
+  ```json
+  {
+    "status": "passed | failed",
+    "result": {
+      "passed": false,
+      "total_rows": 5,
+      "failure_count": 7,
+      "stored_failures": 7,
+      "truncated": false,
+      "rules": [{"rule_id": "R001", "rule_type": "not-null", "passed": 4, "failed": 1}],
+      "failures": [ {"rule_id": "...", "row_number": 3, "column": "...", "reason": "..."} ]
+    }
+  }
+  ```
+
+- `baseline`：`{status: "passed | drift_detected", diff: {findings: [...], ...}, thresholds}`
+
+所有 JSON 均为 UTF-8、缩进 2、`ensure_ascii=False`，可直接被 `jq` 等工具消费。
+人类可读的摘要与错误信息走 stderr，不污染 stdout 上的 JSON。
+
+---
+
+## Python 库 API（内存使用）
+
+不落地文件也可以直接对内存中的 `list[dict]` 使用：
+
+```python
+from dqtool import profile_rows, validate_rows, compare_profiles
+from dqtool.values import normalize_row
+
+rows = [{"id": 1, "age": "30"}, {"id": 1, "age": None}]
+rows = [normalize_row(r) for r in rows]          # 字符串 -> 类型，可选但推荐
+
+profile = profile_rows(rows)                     # 统计画像（dict）
+result = validate_rows(rows, [
+    {"id": "id_unique", "type": "unique", "column": "id"},
+    {"id": "age_required", "type": "not-null", "column": "age"},
+])
+print(result.passed, result.failure_count)       # False 1
+for f in result.failures:
+    print(f.rule_id, f.row_number, f.reason)     # 逐行失败记录
+
+drift = compare_profiles(profile, profile)       # 基线对比
+assert drift.passed
+```
+
+大文件/自定义来源的流式处理由 `dqtool.readers.open_dataset`（或实现自己的
+`Iterable[list[dict]]` 数据块迭代器）配合 `Profiler.update_stream` 与
+`RuleEngine.process_chunk` 完成，行号由调用方按块维护。
+
+---
+
+## 运行测试
+
+所有测试都可直接在终端执行（使用 pytest），无需启动任何服务：
+
+```bash
+# 在仓库根目录
+python3 -m pytest tests/ -v
+
+# 只跑某一类场景
+python3 -m pytest tests/test_rules.py -v
+python3 -m pytest tests/test_chunked_readers.py -v
+python3 -m pytest tests/test_cli.py -v
+```
+
+测试覆盖的场景：
+
+- 空值（not-null、默认/自定义空值词表、整列全空）；
+- 重复（单列 unique、跨行重复定位、复合唯一键、全空组合键豁免）；
+- 类型错误（range 遇到非数值与布尔、CSV 文本归一化、类型漂移）；
+- regex、allowed-values、规则配置非法、规则 ID 重复、引用缺失列；
+- profile 统计口径（类型推断、空值率、唯一值、min/max/mean、高频值）；
+- 基线对比（缺列、新增列、类型变化、空值率漂移、范围异常、阈值边界）；
+- 分块处理（块大小不影响结果、3 万行 CSV 分 300 块、行号连续）；
+- 损坏输入（坏 CSV、坏 JSONL 行定位、坏 Parquet、空文件）；
+- CLI 端到端（三种格式、JSON 报告内容、退出码 0/1/2）。
+
+---
+
+## 设计说明（大文件与内存）
+
+- 三种格式全部产出**数据块迭代器**：CSV/JSONL 按 `--chunk-size` 行成块，
+  Parquet 基于 pyarrow 的 `iter_batches` 按批次读取；
+- profile 只维护每列的标量汇总与“去重值计数/高频计数”，不保存原始行；
+  唯一性检查只保存“见过的键 + 首次行号”；
+- `validate --max-failures` 可限制失败明细的内存占用（总失败数照常统计）；
+- 极端高基数列的去重计数本身与基数同阶，这是统计“唯一值数量”的固有成本，
+  但与**总行数**解耦——不需要持有整份数据集。
+
+## 项目结构
+
+```
+dqtool/
+  __init__.py      # 公共 API
+  __main__.py      # python -m dqtool
+  cli.py           # 命令行（profile / validate / baseline）与退出码
+  readers.py       # CSV / JSONL / Parquet / 内存 分块读取器
+  values.py        # 值归一化与可哈希键
+  profiler.py      # 流式字段 profile
+  rules.py         # 规则引擎与逐行失败记录
+  baseline.py      # 基线 profile 比较
+  errors.py        # CorruptDataError / RuleError
+tests/             # pytest 测试（70 个用例）
+examples/          # 样例 CSV/JSONL/Parquet、规则与基线
+```
