@@ -1,0 +1,6 @@
+id,name,age,email,status,created_at
+1,Alice,30,alice@example.com,active,2026-01-05
+2,Bob,170,bob@example.com,banned,2026-02-11
+3,,25,not-an-email,active,2026-02-20
+4,Dora,-3,dora@example.com,pending,2026-03-01
+2,Eve,42,eve@example.com,active,2026-03-03

@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "id": "id_not_null",
+      "type": "not-null",
+      "field": "id"
+    },
+    {
+      "id": "id_unique",
+      "type": "unique",
+      "field": "id",
+      "params": { "nulls": "distinct" }
+    },
+    {
+      "id": "age_range",
+      "type": "range",
+      "field": "age",
+      "params": { "min": 0, "max": 120 }
+    },
+    {
+      "id": "email_format",
+      "type": "regex",
+      "field": "email",
+      "params": { "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" }
+    },
+    {
+      "id": "status_allowed",
+      "type": "allowed-values",
+      "field": "status",
+      "params": { "allowed": ["active", "banned"] }
+    },
+    {
+      "id": "name_not_null",
+      "type": "not-null",
+      "field": "name"
+    },
+    {
+      "id": "id_created_unique",
+      "type": "composite-unique",
+      "fields": ["id", "created_at"],
+      "params": { "nulls": "skip" }
+    }
+  ]
+}
